@@ -23,15 +23,26 @@ def load_model():
     return joblib.load(model_path)
 
 
+def get_classifier(pipeline):
+    """Return the classifier from the saved pipeline."""
+    if hasattr(pipeline, "named_steps"):
+        for step in reversed(list(pipeline.named_steps.values())):
+            if hasattr(step, "predict_proba"):
+                return step
+
+    return pipeline
+
+
 st.title("🚦 Road Accident Severity Predictor")
+
 st.write(
     "Enter road and environmental details to predict "
     "the accident severity class."
 )
 
 st.warning(
-    "Educational prototype only. Not validated for real-world "
-    "road-safety decisions."
+    "Educational prototype only. This model is not validated "
+    "for real-world road-safety decisions."
 )
 
 try:
@@ -45,16 +56,27 @@ with st.form("prediction_form"):
     city = st.selectbox(
         "City",
         [
-            "Bengaluru", "Mumbai", "Delhi", "Chennai",
-            "Hyderabad", "Pune", "Kolkata", "Ahmedabad",
+            "Bengaluru",
+            "Mumbai",
+            "Delhi",
+            "Chennai",
+            "Hyderabad",
+            "Pune",
+            "Kolkata",
+            "Ahmedabad",
         ],
     )
 
     day_of_week = st.selectbox(
         "Day of week",
         [
-            "Monday", "Tuesday", "Wednesday", "Thursday",
-            "Friday", "Saturday", "Sunday",
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday",
         ],
     )
 
@@ -175,10 +197,20 @@ if submitted:
         st.subheader("Prediction result")
         st.write(f"**Predicted severity: {prediction}**")
 
+        classifier = get_classifier(model)
+
         if hasattr(model, "predict_proba"):
             probabilities = model.predict_proba(input_data)[0]
             classes = model.classes_
+        elif hasattr(classifier, "predict_proba"):
+            transformed = model[:-1].transform(input_data)
+            probabilities = classifier.predict_proba(transformed)[0]
+            classes = classifier.classes_
+        else:
+            probabilities = None
+            classes = None
 
+        if probabilities is not None:
             probability_data = pd.DataFrame(
                 {
                     "Severity": [
@@ -206,14 +238,14 @@ if submitted:
             "Diagnostic details",
             expanded=True,
         ):
-            st.write("Input columns:")
-            st.code(str(list(input_data.columns)))
-
             st.write("Input data:")
             st.dataframe(
                 input_data,
                 use_container_width=True,
             )
+
+            st.write("Input columns:")
+            st.code(str(list(input_data.columns)))
 
             st.write("Model type:")
             st.code(type(model).__name__)
@@ -223,64 +255,74 @@ if submitted:
                 str(getattr(model, "classes_", "Unavailable"))
             )
 
-            expected_features = getattr(
+            expected = getattr(
                 model,
                 "feature_names_in_",
                 None,
             )
 
-            st.write("Model expected features:")
+            st.write("Expected input features:")
             st.code(
                 str(
-                    list(expected_features)
-                    if expected_features is not None
+                    list(expected)
+                    if expected is not None
                     else "Not directly available"
                 )
             )
 
             if hasattr(model, "n_features_in_"):
                 st.write(
-                    "Expected input feature count:",
+                    "Expected feature count:",
                     model.n_features_in_,
                 )
 
             st.write("Full model pipeline:")
 
             if hasattr(model, "named_steps"):
-                for step_name, step in model.named_steps.items():
-                    st.write(f"Step: {step_name}")
-                    st.write(f"Type: {type(step).__name__}")
+                for name, step in model.named_steps.items():
+                    st.markdown(f"**Step: {name}**")
+                    st.write("Type:", type(step).__name__)
 
-                    step_features = getattr(
+                    features = getattr(
                         step,
                         "feature_names_in_",
                         None,
                     )
 
-                    if step_features is not None:
+                    if features is not None:
                         st.write(
                             "Features:",
-                            list(step_features),
+                            list(features),
+                        )
+
+                    if hasattr(step, "get_depth"):
+                        st.write(
+                            "Decision tree depth:",
+                            step.get_depth(),
+                        )
+
+                    if hasattr(step, "get_n_leaves"):
+                        st.write(
+                            "Decision tree leaves:",
+                            step.get_n_leaves(),
                         )
 
                     if hasattr(step, "classes_"):
                         st.write(
-                            "Classes:",
+                            "Classifier classes:",
                             list(step.classes_),
                         )
 
                     if hasattr(step, "transformers_"):
-                        st.write("Column transformer details:")
-
                         for (
-                            name,
+                            transformer_name,
                             transformer,
                             columns,
                         ) in step.transformers_:
                             st.write(
                                 {
-                                    "name": name,
-                                    "transformer": (
+                                    "transformer": transformer_name,
+                                    "type": (
                                         type(transformer).__name__
                                         if transformer is not None
                                         else None
@@ -288,9 +330,18 @@ if submitted:
                                     "columns": str(columns),
                                 }
                             )
-            else:
-                st.write(
-                    "The loaded model is not a named pipeline."
+
+            st.write("Model prediction diagnostics:")
+
+            if probabilities is not None:
+                st.json(
+                    {
+                        str(label): float(probability)
+                        for label, probability in zip(
+                            classes,
+                            probabilities,
+                        )
+                    }
                 )
 
         st.caption(
@@ -302,6 +353,6 @@ if submitted:
         st.error(f"Prediction failed: {error}")
         st.code(traceback.format_exc())
         st.info(
-            "Check the training features, preprocessing steps, "
+            "Check the training features, preprocessing, "
             "category encodings, and scikit-learn version."
         )
