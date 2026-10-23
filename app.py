@@ -1,5 +1,6 @@
 
 import math
+import traceback
 from pathlib import Path
 
 import joblib
@@ -28,15 +29,15 @@ st.write(
     "the accident severity class."
 )
 
-st.info(
-    "This is an educational prototype, not a validated "
-    "real-world road safety assessment."
+st.warning(
+    "Educational prototype only. This model is not validated "
+    "for real-world road-safety decisions."
 )
 
 try:
     model = load_model()
 except Exception as error:
-    st.error(f"Could not load the model: {error}")
+    st.error(f"Model loading failed: {error}")
     st.stop()
 
 
@@ -134,7 +135,7 @@ with st.form("prediction_form"):
         "Month",
         min_value=1,
         max_value=12,
-        value=6,
+        value=7,
         step=1,
     )
 
@@ -142,17 +143,17 @@ with st.form("prediction_form"):
         "Hour of day",
         min_value=0,
         max_value=23,
-        value=17,
-        help="0 = midnight, 12 = noon, 18 = 6 PM.",
+        value=18,
+        help="0 = midnight; 12 = noon; 18 = 6 PM.",
     )
 
-    predict = st.form_submit_button(
+    submitted = st.form_submit_button(
         "Predict severity",
         type="primary",
     )
 
 
-if predict:
+if submitted:
     input_data = pd.DataFrame(
         [
             {
@@ -169,8 +170,12 @@ if predict:
                 "is_peak_hour": is_peak_hour,
                 "year": year,
                 "month": month,
-                "hour_sin": math.sin(2 * math.pi * hour / 24),
-                "hour_cos": math.cos(2 * math.pi * hour / 24),
+                "hour_sin": math.sin(
+                    2 * math.pi * hour / 24
+                ),
+                "hour_cos": math.cos(
+                    2 * math.pi * hour / 24
+                ),
             }
         ]
     )
@@ -187,9 +192,11 @@ if predict:
 
             probability_data = pd.DataFrame(
                 {
-                    "Severity": [str(label) for label in classes],
+                    "Severity": [
+                        str(label) for label in classes
+                    ],
                     "Probability (%)": [
-                        round(float(prob) * 100, 2)
+                        round(float(prob) * 100, 4)
                         for prob in probabilities
                     ],
                 }
@@ -205,28 +212,61 @@ if predict:
             st.bar_chart(
                 probability_data.set_index("Severity")
             )
-
-            st.caption(
-                "Probabilities show the model's estimates, "
-                "not the certainty or actual risk of an accident."
-            )
         else:
-            st.warning(
-                "This model does not support predict_proba, "
-                "so probability scores are unavailable."
+            st.info(
+                "This model does not provide probability estimates."
             )
 
-        with st.expander("Inspect model input"):
-            st.dataframe(input_data, use_container_width=True)
+        # Diagnostic information for checking model compatibility.
+        with st.expander(
+            "Diagnostic details — open this after predicting",
+            expanded=True,
+        ):
+            st.write("Input columns:")
+            st.code(str(list(input_data.columns)))
 
-        st.warning(
-            "Educational demonstration only. Do not use "
-            "these predictions for real-world safety decisions."
+            st.write("Input data:")
+            st.dataframe(
+                input_data,
+                use_container_width=True,
+            )
+
+            st.write("Model classes:")
+            st.code(str(getattr(model, "classes_", "Unavailable")))
+
+            expected_features = getattr(
+                model,
+                "feature_names_in_",
+                None,
+            )
+
+            st.write("Model expected features:")
+            st.code(
+                str(
+                    list(expected_features)
+                    if expected_features is not None
+                    else "Not directly available"
+                )
+            )
+
+            if hasattr(model, "n_features_in_"):
+                st.write(
+                    "Expected number of features:",
+                    model.n_features_in_,
+                )
+
+            st.write("Model type:")
+            st.code(type(model).__name__)
+
+        st.caption(
+            "Probabilities are model estimates, not guarantees "
+            "of actual accident severity."
         )
 
     except Exception as error:
         st.error(f"Prediction failed: {error}")
-        st.caption(
-            "The model's expected input features or category "
-            "values may differ from the app."
+        st.code(traceback.format_exc())
+        st.info(
+            "Check the model's training features, category "
+            "encodings, and scikit-learn version."
         )
