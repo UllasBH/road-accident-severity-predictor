@@ -30,8 +30,8 @@ st.write(
 )
 
 st.warning(
-    "Educational prototype only. This model is not validated "
-    "for real-world road-safety decisions."
+    "Educational prototype only. Not validated for real-world "
+    "road-safety decisions."
 )
 
 try:
@@ -45,27 +45,16 @@ with st.form("prediction_form"):
     city = st.selectbox(
         "City",
         [
-            "Bengaluru",
-            "Mumbai",
-            "Delhi",
-            "Chennai",
-            "Hyderabad",
-            "Pune",
-            "Kolkata",
-            "Ahmedabad",
+            "Bengaluru", "Mumbai", "Delhi", "Chennai",
+            "Hyderabad", "Pune", "Kolkata", "Ahmedabad",
         ],
     )
 
     day_of_week = st.selectbox(
         "Day of week",
         [
-            "Monday",
-            "Tuesday",
-            "Wednesday",
-            "Thursday",
-            "Friday",
-            "Saturday",
-            "Sunday",
+            "Monday", "Tuesday", "Wednesday", "Thursday",
+            "Friday", "Saturday", "Sunday",
         ],
     )
 
@@ -144,7 +133,7 @@ with st.form("prediction_form"):
         min_value=0,
         max_value=23,
         value=18,
-        help="0 = midnight; 12 = noon; 18 = 6 PM.",
+        help="0 = midnight, 12 = noon, 18 = 6 PM.",
     )
 
     submitted = st.form_submit_button(
@@ -212,14 +201,9 @@ if submitted:
             st.bar_chart(
                 probability_data.set_index("Severity")
             )
-        else:
-            st.info(
-                "This model does not provide probability estimates."
-            )
 
-        # Diagnostic information for checking model compatibility.
         with st.expander(
-            "Diagnostic details — open this after predicting",
+            "Diagnostic details",
             expanded=True,
         ):
             st.write("Input columns:")
@@ -231,8 +215,13 @@ if submitted:
                 use_container_width=True,
             )
 
+            st.write("Model type:")
+            st.code(type(model).__name__)
+
             st.write("Model classes:")
-            st.code(str(getattr(model, "classes_", "Unavailable")))
+            st.code(
+                str(getattr(model, "classes_", "Unavailable"))
+            )
 
             expected_features = getattr(
                 model,
@@ -251,12 +240,58 @@ if submitted:
 
             if hasattr(model, "n_features_in_"):
                 st.write(
-                    "Expected number of features:",
+                    "Expected input feature count:",
                     model.n_features_in_,
                 )
 
-            st.write("Model type:")
-            st.code(type(model).__name__)
+            st.write("Full model pipeline:")
+
+            if hasattr(model, "named_steps"):
+                for step_name, step in model.named_steps.items():
+                    st.write(f"Step: {step_name}")
+                    st.write(f"Type: {type(step).__name__}")
+
+                    step_features = getattr(
+                        step,
+                        "feature_names_in_",
+                        None,
+                    )
+
+                    if step_features is not None:
+                        st.write(
+                            "Features:",
+                            list(step_features),
+                        )
+
+                    if hasattr(step, "classes_"):
+                        st.write(
+                            "Classes:",
+                            list(step.classes_),
+                        )
+
+                    if hasattr(step, "transformers_"):
+                        st.write("Column transformer details:")
+
+                        for (
+                            name,
+                            transformer,
+                            columns,
+                        ) in step.transformers_:
+                            st.write(
+                                {
+                                    "name": name,
+                                    "transformer": (
+                                        type(transformer).__name__
+                                        if transformer is not None
+                                        else None
+                                    ),
+                                    "columns": str(columns),
+                                }
+                            )
+            else:
+                st.write(
+                    "The loaded model is not a named pipeline."
+                )
 
         st.caption(
             "Probabilities are model estimates, not guarantees "
@@ -267,6 +302,6 @@ if submitted:
         st.error(f"Prediction failed: {error}")
         st.code(traceback.format_exc())
         st.info(
-            "Check the model's training features, category "
-            "encodings, and scikit-learn version."
+            "Check the training features, preprocessing steps, "
+            "category encodings, and scikit-learn version."
         )
